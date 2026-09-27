@@ -260,18 +260,21 @@ def publish(staged, out_dir, clean):
     """Replace the icons of out_dir with the freshly fetched ones.
 
     Nothing is touched before every icon was fetched and converted, so a failed
-    run leaves the previous icons in place. The icons that are dropped are moved
-    aside and only forgotten once every new icon is in place, so a failure while
+    run leaves the previous icons in place. Every icon that is dropped or that a
+    new icon is going to replace is moved aside first, so a failure while
     installing them can be undone.
     """
     backup = tempfile.mkdtemp(prefix="cubes-icons-backup-")
     installed = []
     try:
-        if clean:
-            for name in os.listdir(out_dir):
-                if name.startswith("ic_") and name.endswith(".png"):
-                    shutil.move(os.path.join(out_dir, name), os.path.join(backup, name))
-        for name in sorted(os.listdir(staged)):
+        staged_names = set(os.listdir(staged))
+        for name in os.listdir(out_dir):
+            if not name.startswith("ic_") or not name.endswith(".png"):
+                continue
+            # it is dropped (--clean) or replaced by a new icon: keep a copy
+            if clean or name in staged_names:
+                shutil.move(os.path.join(out_dir, name), os.path.join(backup, name))
+        for name in sorted(staged_names):
             shutil.move(os.path.join(staged, name), os.path.join(out_dir, name))
             installed.append(name)
     except Exception:
@@ -286,6 +289,19 @@ def publish(staged, out_dir, clean):
         raise
     finally:
         shutil.rmtree(backup, ignore_errors=True)
+
+
+def required_icons(here):
+    """The icon names the wallpaper needs, as declared in IconGroups.java.
+
+    Returns None when the file is not there, the caller then has nothing to
+    compare against.
+    """
+    path = os.path.join(here, "src", "mobile", "wallpaper", "cubeslivewallpaper", "IconGroups.java")
+    if not os.path.isfile(path):
+        return None
+    source = open(path, "r", encoding="utf-8").read()
+    return set(re.findall(r"R\.drawable\.(\w+)", source))
 
 
 def main(argv=None):
@@ -322,6 +338,18 @@ def main(argv=None):
             raise GitHubError("no character icons found in " + CHARACTERS_DIR)
         if not achievements:
             raise GitHubError("no achievement icons found in " + ACHIEVEMENTS_DIR)
+
+        # A group can be non empty and still miss an icon the wallpaper needs,
+        # for instance when an icon is renamed upstream. Publishing that would
+        # leave IconGroups.java pointing at a drawable that is not there, and
+        # with --clean the old icon is already gone by then.
+        required = required_icons(here)
+        if required is not None:
+            fetched = set(name[:-4] for name in os.listdir(staging) if name.endswith(".png"))
+            missing = sorted(required - fetched)
+            if missing:
+                raise GitHubError("%d icon(s) that IconGroups.java needs are missing: %s"
+                                  % (len(missing), ", ".join(missing)))
 
         publish(staging, out_dir, args.clean)
     except (GitHubError, OSError) as error:
