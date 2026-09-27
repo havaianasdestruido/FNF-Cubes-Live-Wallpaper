@@ -51,13 +51,15 @@ them for the screen density) and are listed in `IconGroups.java`:
 
 ```
 python3 tools/fetch_icons.py            # download/refresh the icons
-python3 tools/fetch_icons.py --clean    # ... and drop the old ones first
+python3 tools/fetch_icons.py --clean    # ... and drop the icons that are not fetched again
 ```
 
 The script needs [Pillow](https://python-pillow.org/) (`pip install pillow`) and
 fetches the files through the GitHub API, so `GITHUB_TOKEN` is only needed to
-raise the anonymous rate limit. To add an icon, drop the file into
-`res/drawable-nodpi` and add it to the matching group in `IconGroups.java`.
+raise the anonymous rate limit. Everything is fetched into a temporary
+directory first, so a failed run leaves the icons that are already in place
+untouched. To add an icon, drop the file into `res/drawable-nodpi` and add it
+to the matching group in `IconGroups.java`.
 
 ## Known limitations
 Cubes are actually spheres. The source include balls elastic collision

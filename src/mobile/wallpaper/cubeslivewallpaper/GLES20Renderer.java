@@ -336,6 +336,14 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
         		lastIconShuffle_ = now;
         		iconLibrary_.selectRandomGroup();
         		applyIconsToCubes();
+        		if (iconLibrary_.activeTextureCount() == 0) {
+        			// the new group has no usable icon, keep the cubes textured
+        			// with the logo like loadIcons() does
+        			if (fallbackTexture_ == null) {
+        				fallbackTexture_ = createFallbackTexture();
+        			}
+        			applyIconsToCubes();
+        		}
         		Log.i(TAG, "icon group: " + iconLibrary_.activeGroupName() + " (" + iconLibrary_.activeTextureCount() + " icons)");
         	} else if (now - lastIconShuffle_ >= ICON_SHUFFLE_MS) {
         		lastIconShuffle_ = now;

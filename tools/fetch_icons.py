@@ -22,6 +22,10 @@ referenced from IconGroups.java as R.drawable.<name>.
 Usage:
     python3 tools/fetch_icons.py [--repo owner/name] [--ref main] [--out DIR]
 
+Everything is fetched into a temporary directory first, so the icons that are
+already in place survive a failed run. With --clean the icons that are not
+fetched again are dropped, without it they are kept.
+
 Requires Pillow (pip install pillow).  Files are fetched through the GitHub
 contents API; set GITHUB_TOKEN to raise the anonymous rate limit.
 """
@@ -29,7 +33,9 @@ contents API; set GITHUB_TOKEN to raise the anonymous rate limit.
 import argparse
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -250,36 +256,57 @@ def fetch_plain_icons(repo, ref, out_dir, token, directory, prefix, strip=None):
     return written
 
 
+def publish(staged, out_dir, clean):
+    """Replace the icons of out_dir with the freshly fetched ones.
+
+    Nothing is touched before every icon was fetched and converted, so a failed
+    run leaves the previous icons in place.
+    """
+    if clean:
+        for name in os.listdir(out_dir):
+            if name.startswith("ic_") and name.endswith(".png"):
+                os.remove(os.path.join(out_dir, name))
+    for name in sorted(os.listdir(staged)):
+        shutil.move(os.path.join(staged, name), os.path.join(out_dir, name))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Download the cube face textures.")
     parser.add_argument("--repo", default=DEFAULT_REPO, help="GitHub owner/name to fetch from")
     parser.add_argument("--ref", default=DEFAULT_REF, help="branch, tag or commit to fetch from")
     parser.add_argument("--out", default=None, help="output directory (default: res/drawable-nodpi)")
-    parser.add_argument("--clean", action="store_true", help="remove ic_*.png files before writing")
+    parser.add_argument("--clean", action="store_true",
+                        help="drop the icons that are not fetched again")
     args = parser.parse_args(argv)
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out_dir = args.out or os.path.join(here, "res", "drawable-nodpi")
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
-    if args.clean:
-        for name in os.listdir(out_dir):
-            if name.startswith("ic_") and name.endswith(".png"):
-                os.remove(os.path.join(out_dir, name))
 
+    # The icons are fetched into a temporary directory first: if anything goes
+    # wrong on the way, the icons that are already there stay untouched.
+    staging = tempfile.mkdtemp(prefix="cubes-icons-")
     token = os.environ.get("GITHUB_TOKEN")
     try:
         written = []
-        written += fetch_pressed_arrows(args.repo, args.ref, out_dir, token)
-        written += fetch_pixel_arrows(args.repo, args.ref, out_dir, token)
-        written += fetch_plain_icons(args.repo, args.ref, out_dir, token, CHARACTERS_DIR, "ic_char_", strip="icon-")
-        written += fetch_plain_icons(args.repo, args.ref, out_dir, token, ACHIEVEMENTS_DIR, "ic_ach_")
+        written += fetch_pressed_arrows(args.repo, args.ref, staging, token)
+        written += fetch_pixel_arrows(args.repo, args.ref, staging, token)
+        written += fetch_plain_icons(args.repo, args.ref, staging, token, CHARACTERS_DIR, "ic_char_", strip="icon-")
+        written += fetch_plain_icons(args.repo, args.ref, staging, token, ACHIEVEMENTS_DIR, "ic_ach_")
     except GitHubError as error:
+        shutil.rmtree(staging, ignore_errors=True)
         sys.stderr.write("error: %s\n" % error)
+        sys.stderr.write("the icons in %s were left untouched\n" % out_dir)
         return 1
 
+    try:
+        publish(staging, out_dir, args.clean)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
     for path in written:
-        print(os.path.relpath(path, here))
+        print(os.path.relpath(os.path.join(out_dir, os.path.basename(path)), here))
     print("%d textures written to %s" % (len(written), os.path.relpath(out_dir, here)))
     return 0
 

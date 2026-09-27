@@ -52,7 +52,7 @@ public class IconLibrary {
 	private final Random random_ = new Random();
 
 	/** Textures per group, a null entry means "not loaded (yet)". */
-	private final M3DM.mD3DTexture textures_[];
+	private final M3DM.mD3DTexture textures_[][];
 	private int activeGroup_ = -1;
 
 	public IconLibrary(Context context) {
