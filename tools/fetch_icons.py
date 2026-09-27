@@ -52,6 +52,14 @@ NOTESKINS = (
     ("future", "assets/shared/images/noteskins/NOTE_assets-future"),
 )
 
+# The health icons are not single pictures: the engine lays them out as a
+# horizontal strip of square frames (150x150), frame 0 is the normal icon, the
+# frames after it are the losing/winning ones. See changeIcon() in
+# source/objects/HealthIcon.hx of the Phoenix Engine, which reads them with
+#   iSize = round(width / height); frameWidth = floor(width / iSize)
+# Only the normal frame is used for the cubes.
+ICON_FRAMES_FROM_ASPECT = True
+
 # Pixel noteskins: the sheet is a plain 4x5 grid without a sprite sheet atlas,
 # the first row holds the unpressed arrows, the other rows the pressed ones.
 # name -> (sheet, row)
@@ -140,6 +148,24 @@ def cut_frame(sheet, frame):
     return image
 
 
+def normal_frame(image):
+    """Keep the first (normal) frame of a health icon sprite strip.
+
+    The icons are horizontal strips of square frames: frame 0 is the normal
+    icon, the following frames are the losing and winning ones. Returns the
+    image untouched when it is a single frame already.
+    """
+    if not ICON_FRAMES_FROM_ASPECT or image.height <= 0:
+        return image
+    frames = max(1, int(round(image.width / float(image.height))))
+    if frames < 2:
+        return image
+    frame_width = image.width // frames
+    if frame_width <= 0:
+        return image
+    return image.crop((0, 0, frame_width, image.height))
+
+
 def pad_to_square(image):
     """Center an image on a transparent square canvas of the same size."""
     size = max(image.width, image.height)
@@ -160,7 +186,8 @@ def slugify(name, strip=None):
 
 
 def save_png(image, directory, name):
-    image = pad_to_square(image.convert("RGBA"))
+    image = normal_frame(image.convert("RGBA"))
+    image = pad_to_square(image)
     if max(image.size) > MAX_TEXTURE_SIZE:
         scale = float(MAX_TEXTURE_SIZE) / float(max(image.size))
         image = image.resize(
@@ -216,7 +243,10 @@ def fetch_plain_icons(repo, ref, out_dir, token, directory, prefix, strip=None):
             continue
         data = github_download(repo, ref, "%s/%s" % (directory, name), token)
         image = Image.open(BytesIO(data))
+        frames = max(1, int(round(image.width / float(image.height))))
         written.append(save_png(image, out_dir, prefix + slugify(name, strip)))
+        if frames > 1:
+            print("  %s: %d frames, keeping the normal one" % (name, frames))
     return written
 
 

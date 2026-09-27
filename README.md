@@ -20,10 +20,17 @@ The icons are organized in *groups* (one icon mode per group):
 | Group | Icons | Source |
 | --- | --- | --- |
 | Arrows | 28 | the pressed note arrows, cut out of the noteskin sprite sheets (vanilla default/classic/future and the pixel skin) |
-| Characters | 22 | the health icons, `assets/preload/images/icons` |
+| Characters | 22 | the health icons, `assets/preload/images/icons` (the *normal* frame only) |
 | Achievements | 18 | the achievement icons, `assets/preload/images/achievements` |
 
 ![The three icon groups](img/icon-groups-preview.png)
+
+Most of the health icons are not single pictures but a horizontal strip of
+150x150 frames: frame 0 is the normal icon, the frames after it are the losing
+and the winning one (the engine reads them with `iSize = round(width / height)`,
+see `changeIcon()` in `source/objects/HealthIcon.hx` of the Phoenix Engine).
+Only the normal frame is used, the losing/winning frames are cropped away by
+`tools/fetch_icons.py`. The achievement icons are single pictures.
 
 A wallpaper always wears icons of a single group: when the group changes, every
 cube picks a new random icon of the new group, so the cubes of one wall never
