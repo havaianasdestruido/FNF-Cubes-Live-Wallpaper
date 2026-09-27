@@ -31,6 +31,7 @@ import javax.microedition.khronos.opengles.GL10;
 import net.rbgrn.opengl.GLWallpaperService.GLEngine;
 
 import mobile.wallpaper.cubeslivewallpaper.Game;
+import mobile.wallpaper.cubeslivewallpaper.IconLibrary;
 import mobile.wallpaper.cubeslivewallpaper.M3DM;
 import mobile.wallpaper.cubeslivewallpaper.M3DMATRIX;
 import mobile.wallpaper.cubeslivewallpaper.M3DVECTOR;
@@ -43,11 +44,17 @@ import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.GLUtils;
+import android.os.SystemClock;
 import android.util.Log;
 
 public class GLES20Renderer implements GLSurfaceView.Renderer {
 
 	final static String TAG = "GLES20Renderer";
+	
+	/** How long a wall wears one icon group before it switches to another one. */
+	final static long ICON_GROUP_SWITCH_MS = 25000;
+	/** How long the cubes keep their icons before they pick new ones of the active group. */
+	final static long ICON_SHUFFLE_MS = 8000;
 	
 	boolean reloadedTextures = false;
 	boolean preferencesChanged = false;
@@ -67,9 +74,15 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
 	Context mContext;
 	
 	M3DMATRIX mRotation;
-	
-    Bitmap mBitmap = null;
-    M3DM.mD3DTexture mTexture = new M3DM.mD3DTexture();
+    
+    /** The icon groups the cubes can wear, see IconGroups. */
+    IconLibrary iconLibrary_ = null;
+    /** True when the OpenGL textures of the current surface are created. */
+    boolean iconsReady_ = false;
+    /** The original Android texture, used only when no icon could be decoded. */
+    M3DM.mD3DTexture fallbackTexture_ = null;
+    long lastGroupSwitch_ = 0;
+    long lastIconShuffle_ = 0;
     
     private int mDelay = 10;
     private int mCubes = 5;
@@ -139,23 +152,15 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
     	
     	DEV.initializeGL();
     	
+    	// the icons are transparent around the artwork, so the cubes have to be
+    	// blended with whatever is behind them
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
     	
-        // Texture
-  		int[] textures = new int[1];
-        GLES20.glGenTextures(1, textures, 0);
-
-        mTexture.id = textures[0];
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTexture.id);
-
-        GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-
-        
-
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, mBitmap, 0);
+        // Cube textures: the icons of a randomly picked group are loaded and
+        // handed out to the cubes. The wall switches between the groups from
+        // time to time, see onDrawFrame.
+        loadIcons();
         
         // TODO background/sphere texture not created
         /*  // Texture 2
@@ -188,12 +193,86 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
         bitmap2.recycle(); 
   		*/
         
-        game.setTextures(mTexture);
-        
         // Set the background frame color
         GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
         reloadedTextures = true;
+    }
+    
+    /**
+     * Creates the cube textures of a randomly picked icon group and hands them
+     * out to the cubes. Called whenever the OpenGL surface, and with it every
+     * texture, was (re)created.
+     */
+    private void loadIcons() {
+    	if (iconLibrary_ == null) {
+    		iconLibrary_ = new IconLibrary(mContext);
+    	} else {
+    		// the textures belonged to the previous, now gone OpenGL context
+    		iconLibrary_.invalidate();
+    	}
+    	fallbackTexture_ = null;
+    	iconsReady_ = true;
+    	
+    	long now = SystemClock.uptimeMillis();
+    	lastGroupSwitch_ = now;
+    	lastIconShuffle_ = now;
+    	
+    	iconLibrary_.selectRandomGroup();
+    	applyIconsToCubes();
+    	if (iconLibrary_.activeTextureCount() == 0) {
+    		// not a single icon of the group could be decoded, keep the original
+    		// Android texture as a fallback
+    		fallbackTexture_ = createFallbackTexture();
+    		applyIconsToCubes();
+    	}
+    	Log.i(TAG, "icon group: " + iconLibrary_.activeGroupName() + " (" + iconLibrary_.activeTextureCount() + " icons)");
+    }
+    
+    /**
+     * Gives every cube a random icon of the active group. All cubes of the wall
+     * always wear icons of one single group, never a mixture of two groups.
+     */
+    private void applyIconsToCubes() {
+    	if (!iconsReady_ || game == null) {
+    		return;
+    	}
+    	M3DM.mD3DTexture icons[] = (iconLibrary_ != null) ? iconLibrary_.activeTextures() : null;
+    	if (icons == null || icons.length == 0) {
+    		// no icon of the group could be decoded, use the original texture
+    		icons = (fallbackTexture_ != null) ? new M3DM.mD3DTexture[] { fallbackTexture_ } : null;
+    	}
+    	game.setIcons(icons);
+    }
+    
+    /** The original Android texture, used only when no icon is available. */
+    private M3DM.mD3DTexture createFallbackTexture() {
+    	InputStream is = mContext.getResources().openRawResource(R.raw.logo);
+    	Bitmap bitmap = null;
+        try {
+            bitmap = BitmapFactory.decodeStream(is);
+        } finally {
+            try {
+                is.close();
+            } catch(IOException e) {
+                // Ignore.
+            }
+        }
+        if (bitmap == null) {
+        	return null;
+        }
+        
+        int[] textures = new int[1];
+        GLES20.glGenTextures(1, textures, 0);
+        M3DM.mD3DTexture texture = new M3DM.mD3DTexture(textures[0]);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture.id);
+        GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+        bitmap.recycle();
+        return texture;
     }
 
     public void initialize() {
@@ -236,23 +315,9 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
 	   	game = new Game(mCubes);
 	    game.initSys(scene);
 		
-		
-		if (mBitmap != null) {
-			mBitmap.recycle();
-		}
-		
-		InputStream is = mContext.getResources().openRawResource(R.raw.logo);
-
-        try {
-            mBitmap = BitmapFactory.decodeStream(is);
-        } finally {
-            try {
-                is.close();
-            } catch(IOException e) {
-                // Ignore
-            }
-        }
-
+		// the new cubes have no texture yet, hand out the icons of the active
+		// group again (does nothing before the textures were created)
+		applyIconsToCubes();
     }
     
     public void onDrawFrame(GL10 unused) {
@@ -262,6 +327,30 @@ public class GLES20Renderer implements GLSurfaceView.Renderer {
         
         // Main Loop
  		
+        // switch the whole wall to another icon group from time to time and let
+        // the cubes pick new icons of the active group in between
+        if (iconsReady_ && iconLibrary_ != null) {
+        	long now = SystemClock.uptimeMillis();
+        	if (now - lastGroupSwitch_ >= ICON_GROUP_SWITCH_MS) {
+        		lastGroupSwitch_ = now;
+        		lastIconShuffle_ = now;
+        		iconLibrary_.selectRandomGroup();
+        		applyIconsToCubes();
+        		if (iconLibrary_.activeTextureCount() == 0) {
+        			// the new group has no usable icon, keep the cubes textured
+        			// with the logo like loadIcons() does
+        			if (fallbackTexture_ == null) {
+        				fallbackTexture_ = createFallbackTexture();
+        			}
+        			applyIconsToCubes();
+        		}
+        		Log.i(TAG, "icon group: " + iconLibrary_.activeGroupName() + " (" + iconLibrary_.activeTextureCount() + " icons)");
+        	} else if (now - lastIconShuffle_ >= ICON_SHUFFLE_MS) {
+        		lastIconShuffle_ = now;
+        		applyIconsToCubes();
+        	}
+        }
+        
         game.Tc = Tc;
         game.computeScene();
         

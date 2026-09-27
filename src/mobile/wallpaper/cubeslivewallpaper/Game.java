@@ -59,12 +59,50 @@ public class Game {
 		mBall = new M3DM.mD3DMesh[N_BALLS];
 	}
 	
-	// called from renderer, when the texture is loaded
-	void setTextures(M3DM.mD3DTexture texture) {
-		for (int a = 0; a < N_BALLS; a++) {
-			mBall[a].Textures = 1;
-			mBall[a].setTexture(0, texture);
+	// called from renderer, when the icons of the active group are loaded.
+	// Every cube gets a random icon of the group, so all cubes of a wall always
+	// wear icons of one single group.
+	void setIcons(M3DM.mD3DTexture icons[]) {
+		if (mBall == null) {
+			return;
 		}
+		if (icons == null || icons.length == 0) {
+			// no icon available, the cubes stay untextured
+			for (int a = 0; a < N_BALLS; a++) {
+				if (mBall[a] != null) {
+					mBall[a].Textures = 0;
+				}
+			}
+			return;
+		}
+
+		Random generator = new Random();
+		int order[] = randomIconOrder(icons.length, generator);
+		for (int a = 0; a < N_BALLS; a++) {
+			if (mBall[a] == null) {
+				continue;
+			}
+			mBall[a].Textures = 1;
+			// the order holds every icon of the group: the first cubes take the
+			// first icons, the rest cycles when the group is small
+			mBall[a].setTexture(0, icons[order[a % order.length]]);
+		}
+	}
+
+	// returns the indexes of all 'iconCount' icons in a random order. No icon
+	// is repeated as long as the group holds enough of them.
+	static int[] randomIconOrder(int iconCount, Random generator) {
+		int order[] = new int[iconCount];
+		for (int i = 0; i < iconCount; i++) {
+			order[i] = i;
+		}
+		for (int i = iconCount - 1; i > 0; i--) {
+			int j = generator.nextInt(i + 1);
+			int swap = order[i];
+			order[i] = order[j];
+			order[j] = swap;
+		}
+		return order;
 	}
 	
 	void initSys(M3DM.mD3DFrame scene) {
@@ -131,7 +169,7 @@ public class Game {
 			Ball[a]._E = -Kapa * (Ball[a].M);
 
 		
-			// will be set by setTextures, after texture is loaded
+			// will be set by setIcons, when the icons are loaded
 			mBall[a].Textures = 0;
 
 			Ball[a].Rotations = M3DMATRIX.IdentityMatrix();
