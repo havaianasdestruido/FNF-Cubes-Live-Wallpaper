@@ -10,12 +10,56 @@ Application is available on the Google Play Market <https://play.google.com/stor
 Android SDK, Eclipse, Eclipse Android plugin is required. Please follow the official tutorial how to setup the environment.
 Than import the project into Eclipse.
 
+## Cube textures (icon groups)
+
+The cubes are not textured with the Android robot any more, they wear icons of
+the [Friday Night Funkin' Phoenix Engine](https://github.com/havaianasdestruido/FNF-Phoenix-Engine).
+
+The icons are organized in *groups* (one icon mode per group):
+
+| Group | Icons | Source |
+| --- | --- | --- |
+| Arrows | 28 | the pressed note arrows, cut out of the noteskin sprite sheets (vanilla default/classic/future and the pixel skin) |
+| Characters | 22 | the health icons, `assets/preload/images/icons` |
+| Achievements | 18 | the achievement icons, `assets/preload/images/achievements` |
+
+![The three icon groups](img/icon-groups-preview.png)
+
+A wallpaper always wears icons of a single group: when the group changes, every
+cube picks a new random icon of the new group, so the cubes of one wall never
+show a mixture of two groups. How often that happens is controlled by two
+constants in `GLES20Renderer`:
+
+```java
+ICON_GROUP_SWITCH_MS = 25000; // how long a wall wears one group
+ICON_SHUFFLE_MS      = 8000;  // how long the cubes keep their icons inside a group
+```
+
+Only the textures of the active group are kept in the graphic card memory, the
+textures of the previous group are deleted when the wall switches
+(`IconLibrary`).
+
+The textures are downloaded into `res/drawable-nodpi` (so Android does not scale
+them for the screen density) and are listed in `IconGroups.java`:
+
+```
+python3 tools/fetch_icons.py            # download/refresh the icons
+python3 tools/fetch_icons.py --clean    # ... and drop the old ones first
+```
+
+The script needs [Pillow](https://python-pillow.org/) (`pip install pillow`) and
+fetches the files through the GitHub API, so `GITHUB_TOKEN` is only needed to
+raise the anonymous rate limit. To add an icon, drop the file into
+`res/drawable-nodpi` and add it to the matching group in `IconGroups.java`.
+
 ## Known limitations
 Cubes are actually spheres. The source include balls elastic collision
 Only last rotation apply to objects. The rotation matrix are not yet multiplied
 The energy of objects is not shared between rotation and translation movement. Rotation can't cause movement after impact.
 
 Android texture: Portion of this application (Android texture) is reproduced from work created and shared by Google and used according to terms described in the Creative Commons 3.0 Attribution License.
+
+Cube icons: The icons used as cube textures come from the Friday Night Funkin' Phoenix Engine (https://github.com/havaianasdestruido/FNF-Phoenix-Engine), which is licensed under the Apache License 2.0. They are downloaded by tools/fetch_icons.py.
 GLWallpaperService: Livewallpaper supports OpenGL ES 2.0 thanks to Robert Green's GLWallpaperService.
 
 ## Attribution
