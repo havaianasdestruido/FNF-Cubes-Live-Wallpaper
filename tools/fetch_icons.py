@@ -260,14 +260,32 @@ def publish(staged, out_dir, clean):
     """Replace the icons of out_dir with the freshly fetched ones.
 
     Nothing is touched before every icon was fetched and converted, so a failed
-    run leaves the previous icons in place.
+    run leaves the previous icons in place. The icons that are dropped are moved
+    aside and only forgotten once every new icon is in place, so a failure while
+    installing them can be undone.
     """
-    if clean:
-        for name in os.listdir(out_dir):
-            if name.startswith("ic_") and name.endswith(".png"):
+    backup = tempfile.mkdtemp(prefix="cubes-icons-backup-")
+    installed = []
+    try:
+        if clean:
+            for name in os.listdir(out_dir):
+                if name.startswith("ic_") and name.endswith(".png"):
+                    shutil.move(os.path.join(out_dir, name), os.path.join(backup, name))
+        for name in sorted(os.listdir(staged)):
+            shutil.move(os.path.join(staged, name), os.path.join(out_dir, name))
+            installed.append(name)
+    except Exception:
+        # undo what was done so far and put the previous icons back
+        for name in installed:
+            try:
                 os.remove(os.path.join(out_dir, name))
-    for name in sorted(os.listdir(staged)):
-        shutil.move(os.path.join(staged, name), os.path.join(out_dir, name))
+            except OSError:
+                pass
+        for name in os.listdir(backup):
+            shutil.move(os.path.join(backup, name), os.path.join(out_dir, name))
+        raise
+    finally:
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def main(argv=None):
@@ -285,23 +303,31 @@ def main(argv=None):
         os.makedirs(out_dir)
 
     # The icons are fetched into a temporary directory first: if anything goes
-    # wrong on the way, the icons that are already there stay untouched.
+    # wrong on the way, the icons that are already there stay untouched. The
+    # temporary directory is removed on every way out of the block below.
     staging = tempfile.mkdtemp(prefix="cubes-icons-")
     token = os.environ.get("GITHUB_TOKEN")
     try:
         written = []
         written += fetch_pressed_arrows(args.repo, args.ref, staging, token)
         written += fetch_pixel_arrows(args.repo, args.ref, staging, token)
-        written += fetch_plain_icons(args.repo, args.ref, staging, token, CHARACTERS_DIR, "ic_char_", strip="icon-")
-        written += fetch_plain_icons(args.repo, args.ref, staging, token, ACHIEVEMENTS_DIR, "ic_ach_")
-    except GitHubError as error:
-        shutil.rmtree(staging, ignore_errors=True)
+        characters = fetch_plain_icons(args.repo, args.ref, staging, token, CHARACTERS_DIR, "ic_char_", strip="icon-")
+        achievements = fetch_plain_icons(args.repo, args.ref, staging, token, ACHIEVEMENTS_DIR, "ic_ach_")
+        written += characters + achievements
+
+        # a group without a single icon would leave the wallpaper without that
+        # mode and break the references in IconGroups.java, so refuse to publish
+        # (and to drop the icons that are already there) in that case
+        if not characters:
+            raise GitHubError("no character icons found in " + CHARACTERS_DIR)
+        if not achievements:
+            raise GitHubError("no achievement icons found in " + ACHIEVEMENTS_DIR)
+
+        publish(staging, out_dir, args.clean)
+    except (GitHubError, OSError) as error:
         sys.stderr.write("error: %s\n" % error)
         sys.stderr.write("the icons in %s were left untouched\n" % out_dir)
         return 1
-
-    try:
-        publish(staging, out_dir, args.clean)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
