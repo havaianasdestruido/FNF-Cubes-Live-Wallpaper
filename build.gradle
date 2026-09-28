@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application' version '8.6.1'
+}
+
+android {
+    namespace 'mobile.wallpaper.cubeslivewallpaper'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'mobile.wallpaper.cubeslivewallpaper'
+        // Preserve the original app's Android compatibility and behavior.
+        minSdk 10
+        targetSdk 10
+        versionCode 4
+        versionName '1.1'
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            // Do not compile Eclipse's checked-in gen/ files. AGP generates R.
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

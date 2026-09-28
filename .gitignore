@@ -1,3 +1,9 @@
 bin/
 local.properties
 __pycache__/
+
+# Gradle / Android build output
+.gradle/
+build/
+*.apk
+*.aab

@@ -18,8 +18,6 @@
 
 package mobile.wallpaper.cubeslivewallpaper;
 
-import java.util.prefs.Preferences;
-
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
