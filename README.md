@@ -7,8 +7,35 @@ Application is available on the Google Play Market <https://play.google.com/stor
 ![](https://github.com/H21lab/Cubes-Live-Wallpaper/blob/master/img/cubeswallpaper_2.png)
 
 ## Compilation
-Android SDK, Eclipse, Eclipse Android plugin is required. Please follow the official tutorial how to setup the environment.
-Than import the project into Eclipse.
+The project builds with **JDK 17**, **Gradle 8.7**, and the **Android SDK**
+(platform `android-35` and build tools `35.0.0`). Set `ANDROID_HOME` to your SDK
+installation, or set `sdk.dir` in an untracked `local.properties` file.
+
+```sh
+sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+gradle --no-daemon assembleDebug
+```
+
+The installable APK is written to
+`build/outputs/apk/debug/fnf-cubes-live-wallpaper-debug.apk`.
+Gradle uses the existing `src/`, `res/`, and `AndroidManifest.xml`; the legacy
+Eclipse `gen/` files are not used. The application namespace is configured in
+`build.gradle`.
+
+### CI APK downloads
+
+The **Build APK** GitHub Actions workflow runs on pushes and pull requests. You
+can also start it manually from **Actions → Build APK → Run workflow**.
+After a successful run, open its summary and download
+**fnf-cubes-live-wallpaper-apk** from **Artifacts**, then extract the APK from
+the downloaded ZIP. Artifacts are retained for 30 days.
+
+CI builds a **debug-signed APK**, so no signing secrets are required. It is a
+test build, not a production-signed or Play Store release. Clean CI runners
+may generate different debug signing keys, so you may need to uninstall an
+older build before installing a new one (which removes its saved settings).
+The original minimum/target Android API level of 10 is preserved; recent
+Android versions may block installation because of this legacy target.
 
 ## Cube textures (icon groups)
 
